@@ -36,7 +36,7 @@ extern crate core;
 #[cfg(feature = "rayon")]
 extern crate rayon;
 
-pub use decoder::{Decoder, ImageInfo, PixelFormat};
+pub use decoder::{Decoder, ImageInfo};
 pub use error::{Error, UnsupportedFeature};
 pub use parser::CodingProcess;
 

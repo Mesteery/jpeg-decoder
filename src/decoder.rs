@@ -84,8 +84,6 @@ pub struct Decoder<R> {
     quantization_tables: [Option<Arc<[u16; 64]>>; 4],
 
     restart_interval: u16,
-    color_transform: Option<AdobeColorTransform>,
-    is_jfif: bool,
     is_mjpeg: bool,
 
     icc_markers: Vec<IccChunk>,
@@ -111,8 +109,6 @@ impl<R: Read> Decoder<R> {
             ac_huffman_tables: vec![None, None, None, None],
             quantization_tables: [None, None, None, None],
             restart_interval: 0,
-            color_transform: None,
-            is_jfif: false,
             is_mjpeg: false,
             icc_markers: Vec::new(),
             exif_data: None,
@@ -467,26 +463,10 @@ impl<R: Read> Decoder<R> {
                 Marker::APP(..) => {
                     if let Some(data) = parse_app(&mut self.reader, marker)? {
                         match data {
-                            AppData::Adobe(color_transform) => {
-                                self.color_transform = Some(color_transform)
-                            }
-                            AppData::Jfif => {
-                                // From the JFIF spec:
-                                // "The APP0 marker is used to identify a JPEG FIF file.
-                                //     The JPEG FIF APP0 marker is mandatory right after the SOI marker."
-                                // Some JPEGs in the wild does not follow this though, so we allow
-                                // JFIF headers anywhere APP0 markers are allowed.
-                                /*
-                                if previous_marker != Marker::SOI {
-                                    return Err(Error::Format("the JFIF APP0 marker must come right after the SOI marker".to_owned()));
-                                }
-                                */
-
-                                self.is_jfif = true;
-                            }
                             AppData::Avi1 => self.is_mjpeg = true,
                             AppData::Icc(icc) => self.icc_markers.push(icc),
                             AppData::Exif(data) => self.exif_data = Some(data),
+                            _ => {},
                         }
                     }
                 }

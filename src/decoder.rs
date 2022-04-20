@@ -600,8 +600,6 @@ impl<R: Read> Decoder<R> {
                 &frame.components,
                 planes,
                 frame.output_size,
-                self.is_jfif,
-                self.color_transform,
             )
         }
     }
@@ -1139,8 +1137,6 @@ fn compute_image(
     components: &[Component],
     mut data: Vec<Vec<u8>>,
     output_size: Dimensions,
-    is_jfif: bool,
-    color_transform: Option<AdobeColorTransform>,
 ) -> Result<Vec<u8>> {
     if data.is_empty() || data.iter().any(Vec::is_empty) {
         return Err(Error::Format("not all components have data".to_owned()));
@@ -1170,7 +1166,7 @@ fn compute_image(
         decoded.resize(size, 0);
         Ok(decoded)
     } else {
-        compute_image_parallel(components, data, output_size, is_jfif, color_transform)
+        compute_image_parallel(components, data, output_size)
     }
 }
 
@@ -1179,12 +1175,9 @@ fn compute_image_parallel(
     components: &[Component],
     data: Vec<Vec<u8>>,
     output_size: Dimensions,
-    is_jfif: bool,
-    color_transform: Option<AdobeColorTransform>,
 ) -> Result<Vec<u8>> {
     use rayon::prelude::*;
 
-    let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
     let mut image = vec![0u8; line_size * output_size.height as usize];
@@ -1199,7 +1192,6 @@ fn compute_image_parallel(
                 row,
                 output_size.width as usize,
                 line,
-                color_convert_func,
             );
         });
 
@@ -1211,10 +1203,7 @@ fn compute_image_parallel(
     components: &[Component],
     data: Vec<Vec<u8>>,
     output_size: Dimensions,
-    is_jfif: bool,
-    color_transform: Option<AdobeColorTransform>,
 ) -> Result<Vec<u8>> {
-    let color_convert_func = choose_color_convert_func(components.len(), is_jfif, color_transform)?;
     let upsampler = Upsampler::new(components, output_size.width, output_size.height)?;
     let line_size = output_size.width as usize * components.len();
     let mut image = vec![0u8; line_size * output_size.height as usize];
@@ -1225,148 +1214,10 @@ fn compute_image_parallel(
             row,
             output_size.width as usize,
             line,
-            color_convert_func,
         );
     }
 
     Ok(image)
 }
 
-fn choose_color_convert_func(
-    component_count: usize,
-    _is_jfif: bool,
-    color_transform: Option<AdobeColorTransform>,
-) -> Result<fn(&[Vec<u8>], &mut [u8])> {
-    match component_count {
-        3 => {
-            // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-            // Unknown means the data is RGB, so we don't need to perform any color conversion on it.
-            if color_transform == Some(AdobeColorTransform::Unknown) {
-                Ok(color_convert_line_rgb)
-            } else {
-                Ok(color_convert_line_ycbcr)
-            }
-        }
-        4 => {
-            // http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/JPEG.html#Adobe
-            match color_transform {
-                Some(AdobeColorTransform::Unknown) => Ok(color_convert_line_cmyk),
-                Some(_) => Ok(color_convert_line_ycck),
-                None => {
-                    // Assume CMYK because no APP14 marker was found
-                    Ok(color_convert_line_cmyk)
-                },
-            }
-        }
-        _ => panic!(),
-    }
-}
 
-fn color_convert_line_rgb(data: &[Vec<u8>], output: &mut [u8]) {
-    assert!(data.len() == 3, "wrong number of components for rgb");
-    let [r, g, b]: &[Vec<u8>; 3] = data.try_into().unwrap();
-    for (((chunk, r), g), b) in output
-        .chunks_exact_mut(3)
-        .zip(r.iter())
-        .zip(g.iter())
-        .zip(b.iter())
-    {
-        chunk[0] = *r;
-        chunk[1] = *g;
-        chunk[2] = *b;
-    }
-}
-
-fn color_convert_line_ycbcr(data: &[Vec<u8>], output: &mut [u8]) {
-    assert!(data.len() == 3, "wrong number of components for ycbcr");
-    let [y, cb, cr]: &[_; 3] = data.try_into().unwrap();
-
-    #[cfg(not(feature = "platform_independent"))]
-    let arch_specific_pixels = {
-        if let Some(ycbcr) = crate::arch::get_color_convert_line_ycbcr() {
-            #[allow(unsafe_code)]
-            unsafe {
-                ycbcr(y, cb, cr, output)
-            }
-        } else {
-            0
-        }
-    };
-
-    #[cfg(feature = "platform_independent")]
-    let arch_specific_pixels = 0;
-
-    for (((chunk, y), cb), cr) in output
-        .chunks_exact_mut(3)
-        .zip(y.iter())
-        .zip(cb.iter())
-        .zip(cr.iter())
-        .skip(arch_specific_pixels)
-    {
-        let (r, g, b) = ycbcr_to_rgb(*y, *cb, *cr);
-        chunk[0] = r;
-        chunk[1] = g;
-        chunk[2] = b;
-    }
-}
-
-fn color_convert_line_ycck(data: &[Vec<u8>], output: &mut [u8]) {
-    assert!(data.len() == 4, "wrong number of components for ycck");
-    let [c, m, y, k]: &[Vec<u8>; 4] = data.try_into().unwrap();
-
-    for ((((chunk, c), m), y), k) in output
-        .chunks_exact_mut(4)
-        .zip(c.iter())
-        .zip(m.iter())
-        .zip(y.iter())
-        .zip(k.iter())
-    {
-        let (r, g, b) = ycbcr_to_rgb(*c, *m, *y);
-        chunk[0] = r;
-        chunk[1] = g;
-        chunk[2] = b;
-        chunk[3] = 255 - *k;
-    }
-}
-
-fn color_convert_line_cmyk(data: &[Vec<u8>], output: &mut [u8]) {
-    assert!(data.len() == 4, "wrong number of components for cmyk");
-    let [c, m, y, k]: &[Vec<u8>; 4] = data.try_into().unwrap();
-
-    for ((((chunk, c), m), y), k) in output
-        .chunks_exact_mut(4)
-        .zip(c.iter())
-        .zip(m.iter())
-        .zip(y.iter())
-        .zip(k.iter())
-    {
-        chunk[0] = 255 - c;
-        chunk[1] = 255 - m;
-        chunk[2] = 255 - y;
-        chunk[3] = 255 - k;
-    }
-}
-
-const FIXED_POINT_OFFSET: i32 = 20;
-const HALF: i32 = (1 << FIXED_POINT_OFFSET) / 2;
-
-// ITU-R BT.601
-// Based on libjpeg-turbo's jdcolext.c
-fn ycbcr_to_rgb(y: u8, cb: u8, cr: u8) -> (u8, u8, u8) {
-    let y = y as i32 * (1 << FIXED_POINT_OFFSET) + HALF;
-    let cb = cb as i32 - 128;
-    let cr = cr as i32 - 128;
-
-    let r = clamp_fixed_point(y + stbi_f2f(1.40200) * cr);
-    let g = clamp_fixed_point(y - stbi_f2f(0.34414) * cb - stbi_f2f(0.71414) * cr);
-    let b = clamp_fixed_point(y + stbi_f2f(1.77200) * cb);
-    (r, g, b)
-}
-
-fn stbi_f2f(x: f32) -> i32 {
-    (x * ((1 << FIXED_POINT_OFFSET) as f32) + 0.5) as i32
-}
-
-fn clamp_fixed_point(value: i32) -> u8 {
-    (value >> FIXED_POINT_OFFSET).min(255).max(0) as u8
-}

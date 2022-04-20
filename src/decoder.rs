@@ -13,7 +13,7 @@ use crate::huffman::{fill_default_mjpeg_tables, HuffmanDecoder, HuffmanTable};
 use crate::marker::Marker;
 use crate::parser::{
     parse_app, parse_com, parse_dht, parse_dqt, parse_dri, parse_sof, parse_sos,
-    AdobeColorTransform, AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
+    AppData, CodingProcess, Component, Dimensions, EntropyCoding, FrameInfo,
     IccChunk, ScanInfo,
 };
 use crate::upsampler::Upsampler;

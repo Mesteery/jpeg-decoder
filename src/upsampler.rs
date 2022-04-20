@@ -45,7 +45,7 @@ impl Upsampler {
     }
 
     pub fn upsample_and_interleave_row(&self, component_data: &[Vec<u8>], row: usize, output_width: usize, output: &mut [u8]) {
-        let mut line_buffers = [vec![0u8; self.line_buffer_size]; 3];
+        let mut line_buffers  = [vec![0u8; self.line_buffer_size], vec![0u8; self.line_buffer_size], vec![0u8; self.line_buffer_size]];
 
         debug_assert_eq!(component_data.len(), self.components.len());
 

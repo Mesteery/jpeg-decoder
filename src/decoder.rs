@@ -36,31 +36,6 @@ static UNZIGZAG: [u8; 64] = [
     53, 60, 61, 54, 47, 55, 62, 63,
 ];
 
-/// An enumeration over combinations of color spaces and bit depths a pixel can have.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum PixelFormat {
-    /// Luminance (grayscale), 8 bits
-    L8,
-    /// Luminance (grayscale), 16 bits
-    L16,
-    /// RGB, 8 bits per channel
-    RGB24,
-    /// CMYK, 8 bits per channel
-    CMYK32,
-}
-
-impl PixelFormat {
-    /// Determine the size in bytes of each pixel in this format
-    pub fn pixel_bytes(&self) -> usize {
-        match self {
-            PixelFormat::L8 => 1,
-            PixelFormat::L16 => 2,
-            PixelFormat::RGB24 => 3,
-            PixelFormat::CMYK32 => 4,
-        }
-    }
-}
-
 /// Represents metadata of an image.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ImageInfo {
@@ -68,8 +43,6 @@ pub struct ImageInfo {
     pub width: u16,
     /// The height of the image, in pixels.
     pub height: u16,
-    /// The pixel format of the image.
-    pub pixel_format: PixelFormat,
     /// The coding process of the image.
     pub coding_process: CodingProcess,
 }
@@ -130,21 +103,9 @@ impl<R: Read> Decoder<R> {
     pub fn info(&self) -> Option<ImageInfo> {
         match self.frame {
             Some(ref frame) => {
-                let pixel_format = match frame.components.len() {
-                    1 => match frame.precision {
-                        8 => PixelFormat::L8,
-                        16 => PixelFormat::L16,
-                        _ => panic!(),
-                    },
-                    3 => PixelFormat::RGB24,
-                    4 => PixelFormat::CMYK32,
-                    _ => panic!(),
-                };
-
                 Some(ImageInfo {
                     width: frame.output_size.width,
                     height: frame.output_size.height,
-                    pixel_format,
                     coding_process: frame.coding_process,
                 })
             }

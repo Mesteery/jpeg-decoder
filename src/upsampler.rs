@@ -59,7 +59,7 @@ impl Upsampler {
                                              output_width,
                                              &mut line_buffers[i]);
         }
-        let [y, u, v]: &[Vec<u8>; 3] = line_buffers.try_into().unwrap();
+        let [y, u, v]: &[Vec<u8>; 3] = line_buffers;
         for (((chunk, y), u), v) in output
             .chunks_exact_mut(3)
             .zip(y.iter())

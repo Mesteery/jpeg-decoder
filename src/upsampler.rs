@@ -44,7 +44,7 @@ impl Upsampler {
         })
     }
 
-    pub fn upsample_and_interleave_row(&self, component_data: &[Vec<u8>], row: usize, output_width: usize, output: &mut [u8], color_convert: fn(&[Vec<u8>], &mut [u8])) {
+    pub fn upsample_and_interleave_row(&self, component_data: &[Vec<u8>], row: usize, output_width: usize, output: &mut [u8]) {
         let component_count = component_data.len();
         let mut line_buffers = vec![vec![0u8; self.line_buffer_size]; component_count];
 
@@ -59,7 +59,17 @@ impl Upsampler {
                                              output_width,
                                              &mut line_buffers[i]);
         }
-        color_convert(&line_buffers, output);
+        let [y, u, v]: &[Vec<u8>; 3] = line_buffers.try_into().unwrap();
+        for (((chunk, y), u), v) in output
+            .chunks_exact_mut(3)
+            .zip(y.iter())
+            .zip(u.iter())
+            .zip(v.iter())
+        {
+            chunk[0] = *y;
+            chunk[1] = *u;
+            chunk[2] = *v;
+        }
     }
 }
 

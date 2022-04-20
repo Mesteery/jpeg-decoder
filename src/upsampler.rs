@@ -45,10 +45,9 @@ impl Upsampler {
     }
 
     pub fn upsample_and_interleave_row(&self, component_data: &[Vec<u8>], row: usize, output_width: usize, output: &mut [u8]) {
-        let component_count = component_data.len();
-        let mut line_buffers = vec![vec![0u8; self.line_buffer_size]; component_count];
+        let mut line_buffers = [vec![0u8; self.line_buffer_size]; 3];
 
-        debug_assert_eq!(component_count, self.components.len());
+        debug_assert_eq!(component_data.len(), self.components.len());
 
         for (i, component) in self.components.iter().enumerate() {
             component.upsampler.upsample_row(&component_data[i],
@@ -59,12 +58,12 @@ impl Upsampler {
                                              output_width,
                                              &mut line_buffers[i]);
         }
-        let [y, u, v]: &[Vec<u8>; 3] = line_buffers;
+
         for (((chunk, y), u), v) in output
             .chunks_exact_mut(3)
-            .zip(y.iter())
-            .zip(u.iter())
-            .zip(v.iter())
+            .zip(line_buffers[0].iter())
+            .zip(line_buffers[1].iter())
+            .zip(line_buffers[2].iter())
         {
             chunk[0] = *y;
             chunk[1] = *u;
